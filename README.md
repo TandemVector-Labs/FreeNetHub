@@ -1,4 +1,4 @@
-# FreeNet Hub 4.3.9 — public desktop release
+# FreeNet Hub — Public Windows R53 and Linux R21
 
 <p align="center">
   <a href="evidence/R37_INSTALLED_UI_DASHBOARD_20260929.png"><img src="evidence/R37_INSTALLED_UI_DASHBOARD_20260929.png" alt="FreeNet Hub — authentic installed dashboard screenshot captured from R37" width="1000"></a>
@@ -11,6 +11,8 @@ FreeNet Hub controls connectivity on Windows and Linux with explicit Browser, Fu
 
 **Latest official release:** https://github.com/GOD13emad/FreeNetHub/releases/tag/v4.3.9-r53-windows-stable
 
+The published Release includes both **Windows R53** and **Linux R21** archives. Check the [canonical upstream README](https://github.com/GOD13emad/FreeNetHub#readme) for current assets, limitations and SHA-256 verification.
+
 ### Windows R53 (v4.3.9) — public
 
 - Asset: `FreeNetHub_4.3.9_R53_Setup.exe`
@@ -21,13 +23,13 @@ FreeNet Hub controls connectivity on Windows and Linux with explicit Browser, Fu
 - Live Windows R51 `UpdateCheck` independently discovered public R53 and its SHA-256 with `updateAvailable=true`, without disconnecting an active CFON listener. **This does not constitute installing R53 on that owner host.**
 - The Windows installer is **unsigned by publisher choice**. Windows SmartScreen or Smart App Control may warn or block it. Do not disable security protections merely to install.
 
-### Linux R20 — public
+### Linux R21 — current public package
 
-- Asset: `FreeNetHub_4.2.0_Linux_R20.zip`
-- SHA-256: `5973D721EC2D93F7D500187EBC9BB4A5CA06AD73A937BC9AAD936E7C1D745D3B`
-- Accepted installed revision: `4.2.0-linux.20-r47`.
-- Independent owner-host check (2026-10-14): all 9 installed manifest hashes PASS; HTTPS through the local CFON SOCKS5 proxy returned 200; the physical default route and Tailscale were preserved.
-- **Browser-scoped CFON is not whole-system VPN coverage**. A DNS-leak-free Linux full-system VPN remains unverified.
+- Asset: `FreeNetHub_4.2.0_Linux_R21.zip`
+- SHA-256: `82305E1A15684662B7711B53A84522122C6A11D618366314D9DD297B3A7FEC1A`
+- Accepted installed revision: `4.2.0-linux.21-r54`.
+- The [upstream release documentation](https://github.com/GOD13emad/FreeNetHub#linux-r21--current-public-package) records owner-host GTK, integrity, data-preserving R20→R21 upgrade, and browser-scoped CFON checks. These do **not** establish whole-system VPN or DNS-leak protection.
+- R20 remains a historical rollback/reference asset in the same GitHub Release; **it is not the latest public Linux package**. Avoid updates while an active tunnel/session is running.
 
 ### Windows R52 and R51 — previous releases
 
@@ -47,7 +49,7 @@ FreeNet Hub controls connectivity on Windows and Linux with explicit Browser, Fu
 
 ## Validation boundary
 
-The public Windows R53 and Linux R20 products are accepted only within the scopes verified by their own tests. Linux whole-system DNS-leak prevention, unsigned-Windows compatibility with Smart App Control, user-host installed R53 field GUI acceptance, physical console testing, production mobile forwarding/signing, and interactive Cloudflare challenge/login remain OPEN. A command-line HTTP 403 with cf-mitigated: challenge is not proof of a broken proxy or successful browser login.
+The published Windows R53 and Linux R21 assets are accepted only within the scopes verified by their own tests. Linux whole-system DNS-leak prevention, unsigned-Windows compatibility with Smart App Control, user-host installed R53 field GUI acceptance, physical console testing, production mobile forwarding/signing, and interactive Cloudflare challenge/login remain OPEN. A command-line HTTP 403 with cf-mitigated: challenge is not proof of a broken proxy or successful browser login.
 
 No software can promise Internet access if all underlying paths are unavailable.
 
