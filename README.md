@@ -1,5 +1,9 @@
 # FreeNet Hub 4.3.9 — public desktop release
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/TandemVector-Labs/.github/main/brand/social/FreeNetHub.png" alt="FreeNet Hub visual project card" width="720">
+</p>
+
 FreeNet Hub controls connectivity on Windows and Linux with explicit Browser, Full System, and Console capabilities. Availability differs by provider and platform.
 
 ## Installation authority
