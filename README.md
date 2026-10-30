@@ -9,7 +9,9 @@ FreeNet Hub controls connectivity on Windows and Linux with explicit Browser, Fu
 
 ## Installation authority
 
-**Official release and install authority:** [FreeNet Hub 4.3.9 R53 (Windows R53 and Linux R21 assets)](https://github.com/GOD13emad/FreeNetHub/releases/tag/v4.3.9-r53-windows-stable). See the [canonical upstream README](https://github.com/GOD13emad/FreeNetHub#readme) for current assets, limitations and verification.
+**Latest official release:** https://github.com/GOD13emad/FreeNetHub/releases/tag/v4.3.9-r53-windows-stable
+
+The published Release includes both **Windows R53** and **Linux R21** archives. Check the [canonical upstream README](https://github.com/GOD13emad/FreeNetHub#readme) for current assets, limitations and SHA-256 verification.
 
 ### Windows R53 (v4.3.9) — public
 
