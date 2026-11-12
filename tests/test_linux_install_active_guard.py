@@ -28,6 +28,53 @@ def test_active_cfon_install_refuses_before_any_file_changes():
         assert not (app/"INSTALL.sha256").exists()
 
 
+def test_selective_active_refuses_upgrade_without_stopping_tunnel():
+    with tempfile.TemporaryDirectory(prefix="fnh-selective-active-") as td:
+        home=pathlib.Path(td)
+        app=home/".local/share/FreeNetHub"
+        (app/"selective").mkdir(parents=True)
+        (app/"session.json").write_text('{"mode":null,"provider":null,"detail":{}}')
+        (app/"selective/policy.json").write_text('{"schema":1,"enabled":true}')
+        ui=app/"freenet_hub_linux_gtk.py"
+        ui.write_text("UNMODIFIED_OWNER_UI")
+        old=ui.read_bytes()
+        proc=subprocess.run(["bash",str(INSTALL)],text=True,capture_output=True,
+                            env={**os.environ,"HOME":str(home),"DBUS_SESSION_BUS_ADDRESS":""},
+                            timeout=10)
+        assert proc.returncode==72,(proc.returncode,proc.stderr)
+        assert "FREENET_HUB_SELECTIVE_ACTIVE" in proc.stderr
+        assert ui.read_bytes()==old
+        assert not (app/"backup").exists()
+        assert not (app/"INSTALL.sha256").exists()
+
+
+
+def test_tailnet_active_or_corrupt_owner_refuses_upgrade_before_mutation():
+    for payload in ('{"schema":1,"enabled":true}', '{"schema":1,"enabled":false}', '{not-json'):
+        with tempfile.TemporaryDirectory(prefix="fnh-tailnet-install-") as td:
+            home=pathlib.Path(td)
+            app=home/".local/share/FreeNetHub"
+            app.mkdir(parents=True)
+            (app/"session.json").write_text('{"mode":null,"provider":null,"detail":{}}')
+            ui=app/"freenet_hub_linux_gtk.py"
+            ui.write_text("UNMODIFIED_USER_GUI")
+            owner=app/"tailnet_cfon_gateway.json"
+            owner.write_text(payload)
+            if payload.endswith('false}'):
+                # A stopped owner is allowed by policy. Add unowned unit marker
+                # so foreign unit is still blocked preflight.
+                unit=home/".config/systemd/user/freenethub-tailnet-cfon.service"
+                unit.parent.mkdir(parents=True)
+                unit.write_text("# FOREIGN SYSTEMD UNIT\n")
+            proc=subprocess.run(["bash",str(INSTALL)],capture_output=True,text=True,
+                     env={**os.environ,"HOME":str(home),"DBUS_SESSION_BUS_ADDRESS":""},timeout=10)
+            assert proc.returncode==72,(payload,proc.returncode,proc.stderr)
+            assert "FREENET_HUB_TAILNET_ACTIVE_OR_UNKNOWN" in proc.stderr
+            assert ui.read_text()=="UNMODIFIED_USER_GUI"
+            assert not (app/"INSTALL.sha256").exists()
+            assert not (app/"backup").exists()
+
+
 def test_unreadable_session_fails_closed():
     with tempfile.TemporaryDirectory(prefix="fnh-active-guard-") as td:
         home=pathlib.Path(td)

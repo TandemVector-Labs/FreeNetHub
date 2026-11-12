@@ -10,7 +10,7 @@ _dnspec=importlib.util.spec_from_file_location("freenethub_directnet",APP/"direc
 DN=importlib.util.module_from_spec(_dnspec);_dnspec.loader.exec_module(DN)
 PORTS={'NODE':19460,'WARP':19410,'GOOL':19413,'CFON':19414,'TOR':19450,'WEBTUNNEL':19452,'OBFS4':19453}
 BRIDGE_MODES=('WEBTUNNEL','OBFS4')
-DEFAULT={'theme':'dark','country':'AUTO','home':'https://www.youtube.com/','monitor':False,'autoRepair':False,'showIp':False,'minimizeToTray':True,'order':['NODE','WARP','TOR','GOOL','CFON'],'localProxy':'socks5h://127.0.0.1:9909','includeDirect':False,'testPathMode':'BASE','pingTimeoutSec':10,'downloadTimeoutSec':30,'uploadTimeoutSec':30}
+DEFAULT={'theme':'dark','country':'AUTO','home':'https://www.youtube.com/','monitor':False,'autoRepair':False,'showIp':False,'minimizeToTray':True,'order':['NODE','WARP','TOR','GOOL','CFON'],'localProxy':'socks5h://127.0.0.1:9909','includeDirect':False,'testPathMode':'BASE','pingTimeoutSec':10,'downloadTimeoutSec':30,'uploadTimeoutSec':30,'selectiveTailnetEndpoint':'','selectiveDomains':'brave.com\nbravesoftware.com\nstripe.com\nstripe.network\ngoogle.com\ngoogleapis.com\ngoogleusercontent.com\ngstatic.com\ngooglevideo.com\nggpht.com\ngvt1.com\ngvt2.com\ngvt3.com\ng.co\ngoo.gl\nappspot.com\nfirebaseapp.com\nfirebaseio.com\ngoogle.co.uk\ngoogle.de\ngoogle.co.in\ngoogle.com.au\ngoogle.ca\ngoogle.fr\ngoogle.co.jp\ngoogle.ir\nyoutube.com\nyoutu.be\nytimg.com\nyoutube-nocookie.com\nblogspot.com\nblogger.com\nrecaptcha.net\ndoubleclick.net'}
 ALLOWED_COUNTRIES={'AT','DE','NL','US','CA','GB','FR','SG','JP','AUTO'}
 PUBLIC_REFRESH_TTL_SECONDS=1800
 PUBLIC_NODE_SOURCES=(
@@ -74,6 +74,13 @@ def dep_path(name):
  d=deps();x=d.get(name)
  if isinstance(x,dict):return str(x.get('path') or '')
  return str(x or '')
+def _selective_route():
+ p=APP/'selective_route_windows.py'
+ spec=importlib.util.spec_from_file_location('fnh_selective_route_windows',p)
+ m=importlib.util.module_from_spec(spec)
+ spec.loader.exec_module(m)
+ return m
+
 def validate_settings(s):
  if s.get('theme') not in ('dark','light'):raise ValueError('INVALID_THEME')
  if s.get('country') not in ALLOWED_COUNTRIES:raise ValueError('INVALID_COUNTRY')
@@ -89,6 +96,11 @@ def validate_settings(s):
   if not lo<=v<=hi:raise ValueError('INVALID_'+k.upper())
   s[k]=v
  s['testPathMode']=str(s.get('testPathMode','BASE')).upper()
+ ep=str(s.get('selectiveTailnetEndpoint') or '').strip()
+ if ep and (len(ep)>70 or not re.fullmatch(r'[\d.]+:\d+',ep)):
+  raise ValueError('SELECTIVE_TAILNET_ENDPOINT_FORMAT_INVALID')
+ s['selectiveTailnetEndpoint']=ep
+ s['selectiveDomains']='\n'.join(_selective_route().normalize_domains(s.get('selectiveDomains',DEFAULT['selectiveDomains'])))
  return {k:s.get(k,v) for k,v in DEFAULT.items()}
 def test_timeouts():
  s=settings()
@@ -1496,7 +1508,112 @@ def safe_export():
  with zipfile.ZipFile(path,'w',zipfile.ZIP_DEFLATED) as z:z.writestr('diagnostic.json',json.dumps(redact({'version':'4.0','inventory':inv,'last':last,'scope':'No private caches, browser profiles or raw logs included'}),ensure_ascii=False,indent=2))
  return {'path':str(path),'sha256':digest(path)}
 
+def _tailnet_peer_status():
+ """Read-only verified Tailscale peer identities. Never change tailnet config."""
+ path=shutil.which("tailscale.exe") or shutil.which("tailscale")
+ if not path and os.name=="nt":
+  path=r"C:\Program Files\Tailscale\tailscale.exe"
+ if not path or not pathlib.Path(path).is_file():
+  raise ValueError("TAILNET_CLIENT_NOT_AVAILABLE")
+ try:
+  result=sp.run([str(path),"status","--json"],capture_output=True,text=True,
+                encoding="utf-8",errors="replace",check=True,timeout=8)
+  data=json.loads(result.stdout)
+ except (OSError,ValueError,sp.SubprocessError) as exc:
+  raise ValueError("TAILNET_STATUS_UNAVAILABLE") from exc
+ if not isinstance(data,dict) or data.get("BackendState")!="Running":
+  raise ValueError("TAILNET_DISCONNECTED")
+ return data
+
+
+def _tailnet_candidate_peers():
+ status=_tailnet_peer_status()
+ peers=[]
+ for node in (status.get("Peer") or {}).values():
+  if not isinstance(node,dict) or node.get("Online") is not True:
+   continue
+  if str(node.get("OS") or "").lower()!="linux":
+   continue
+  for addr in node.get("TailscaleIPs") or []:
+   try:
+    ip=ipaddress.ip_address(addr)
+    if ip.version != 4 or ip not in ipaddress.ip_network("100.64.0.0/10"):
+     continue
+   except (TypeError,ValueError):
+    continue
+   peers.append({"ip":str(ip),"port":19551,
+                 "name":str(node.get("HostName") or "Linux")[:64]})
+ return peers
+
+
+def _tailnet_endpoint(endpoint):
+ """Require explicit host and exact peer identity, never arbitrary internet SOCKS."""
+ if not isinstance(endpoint,str) or endpoint.count(":")!=1:
+  raise ValueError("TAILNET_ENDPOINT_IP_PORT_REQUIRED")
+ host,raw_port=endpoint.split(":")
+ if raw_port!="19551":
+  raise ValueError("TAILNET_ENDPOINT_PORT_NOT_ALLOWED")
+ try:
+  ip=ipaddress.ip_address(host)
+  if ip.version != 4 or ip not in ipaddress.ip_network("100.64.0.0/10"):
+   raise ValueError("TAILNET_ENDPOINT_PRIVATE_IP_REQUIRED")
+ except (TypeError,ValueError) as exc:
+  raise ValueError("TAILNET_ENDPOINT_PRIVATE_IP_REQUIRED") from exc
+ verified=_tailnet_candidate_peers()
+ if not any(x["ip"]==str(ip) for x in verified):
+  raise ValueError("TAILNET_LINUX_PEER_NOT_VERIFIED")
+ return str(ip),19551
+
+
+def _tailnet_peers():
+ """Return only peers with a live SOCKS5 handshake, without browser or route changes."""
+ peers=[]
+ for item in _tailnet_candidate_peers():
+  try:
+   with socket.create_connection((item["ip"],item["port"]),timeout=1.5) as sock:
+    sock.settimeout(1.5)
+    sock.sendall(b"\x05\x01\x00")
+    if sock.recv(2)!=b"\x05\x00":
+     continue
+   peers.append(item)
+  except OSError:
+   continue
+ return {"ok":True,"peers":peers,"settingsChanged":False}
+
+
 def dispatch(action,mode,payload):
+ if action in ('SelectiveEnable','SelectiveDisable','SelectiveStatus',
+               'SelectiveGooglePreset','SelectiveAddSite','SelectiveProbe','SelectiveTailnetPeers'):
+  sr=_selective_route()
+  if action=='SelectiveStatus':return sr.status()
+  if action=='SelectiveTailnetPeers':return _tailnet_peers()
+  if action=='SelectiveGooglePreset':
+   return {'ok':True,'domains':list(sr.GOOGLE_DOMAINS),'settingsChanged':False}
+  if action=='SelectiveDisable':
+   outcome=sr.disable()
+   if not outcome.get('ok'):raise RuntimeError(outcome.get('error','SELECTIVE_DISABLE_FAILED'))
+   return outcome
+  if action != 'SelectiveAddSite' and mode not in ('NODE','WARP','GOOL','CFON','TOR','WEBTUNNEL','OBFS4','TAILNET'):
+   raise ValueError('SELECTIVE_LOCAL_OR_AUTHENTICATED_TAILNET_PROVIDER_REQUIRED')
+  q=pathlib.Path(payload).resolve()
+  if not q.is_relative_to((ROOT/'jobs').resolve()) or not q.is_file() or q.stat().st_size > 16384:
+   raise ValueError('SELECTIVE_REQUEST_NOT_OWNED')
+  request=read(q,{})
+  if not isinstance(request,dict):
+   raise ValueError('SELECTIVE_REQUEST_INVALID')
+  if action=='SelectiveAddSite':
+   return {'ok':True,'host':sr.host_from_url(request.get('url','')),
+           'settingsChanged':False}
+  if mode=='TAILNET':
+   host,port=_tailnet_endpoint(request.get('endpoint',''))
+   if action=='SelectiveProbe':
+    return sr.diagnose_403_site(request.get('url',''),port,host,mode)
+   return sr.enable(request.get('domains',''),port,mode,proxy_host=host)
+  if not owned(mode) or not verify(mode).get('healthy'):
+   raise ValueError('SELECTIVE_PROVIDER_NOT_HEALTHY_AND_OWNED')
+  if action=='SelectiveProbe':
+   return sr.diagnose_403_site(request.get('url',''),PORTS[mode])
+  return sr.enable(request.get('domains',''),PORTS[mode],mode)
  if action=='Inventory':return inventory()
  if action=='Settings':
   new=validate_settings(read(payload));write(ROOT/'settings.json',new);return {'saved':True,'settings':new}
@@ -1546,9 +1663,18 @@ def dispatch(action,mode,payload):
   h={'healthy':False,'connected':False,'state':'CONNECT_FAILED','mode':'CHATGPT','scope':'CHATGPT_WEB_EDGE','ip':'','country':'','warp':'','seconds':None,'checked':now(),'checks':[],'countryPolicy':'','error':'ALL_CHATGPT_PATHS_FAILED','attempts':failed,'applicationAcceptance':'NOT_TESTED'}
   write(ROOT/'session.json',h);return h
  if action=='Stop':
+  if os.name=='nt':
+   r=_selective_route().disable()
+   if not r.get('ok'):raise RuntimeError('SELECTIVE_RESTORE_REQUIRED_BEFORE_STOP')
   stopped=[m for m in PORTS if stop(m)];write(ROOT/'session.json',{'healthy':False,'stopped':True,'checked':now()});return {'stopped':stopped}
  if action=='StopOne':
   if mode not in PORTS:raise ValueError('INVALID_STOP_MODE')
+  if os.name=='nt':
+   sr=_selective_route()
+   sel=sr.status()
+   if sel.get('enabled') and sel.get('method')==mode:
+    r=sr.disable()
+    if not r.get('ok'):raise RuntimeError('SELECTIVE_RESTORE_REQUIRED_BEFORE_STOP')
   did=stop(mode);return {'stopped':[mode] if did else [],'mode':mode}
  if action=='Scan':
   old=[m for m in PORTS if owned(m)];rows=[]
