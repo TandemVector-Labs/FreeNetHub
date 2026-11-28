@@ -1876,7 +1876,7 @@
     {
       "file": "RELEASE.json",
       "bytes": 44097,
-      "sha256": "90C74C2D17C9411551988F573DF76CB11FF88BDB869AFCB379AC541A225DA945"
+      "sha256": "7D16B8CE754FFBE01F70802A6E5CCABACBA49B76324109AA57273C7E8A67394A"
     },
     {
       "file": "SECURITY.md",
@@ -1890,8 +1890,8 @@
     },
     {
       "file": "tests/ShellLaunchContractTest.cs",
-      "bytes": 2623,
-      "sha256": "61AE1667DAFC658D1D6894C68C8085130021BFA3F27E9AFBC5428B80D5412224"
+      "bytes": 3390,
+      "sha256": "DA77434CD23B229DFFE781BFC33B86B9733B7693FF4B2F46B8610161FD38DD63"
     },
     {
       "file": "tests/Test-ShellLaunchContract.ps1",
@@ -2970,8 +2970,8 @@
     },
     {
       "file": "windows/standalone/FreeNetHub.exe",
-      "bytes": 41472,
-      "sha256": "1AD3B576CD77EC1D3FD4C024747BB097FDC545F55A40574F10229C14D9F4A387"
+      "bytes": 41984,
+      "sha256": "917F174C87A486FDE75681FA076D4155743717793BF44C8C6402026A78C2F3D4"
     },
     {
       "file": "windows/standalone/FreeNetHub.ico",
@@ -2985,8 +2985,8 @@
     },
     {
       "file": "windows/standalone/FreeNetHubShell.cs",
-      "bytes": 16331,
-      "sha256": "56F22CE74B70C5EA99A7551F376A23A6D63CE3DBFC491D61B19BF80949F26E3E"
+      "bytes": 18228,
+      "sha256": "252D2EDD0C6B2F767A4F0241837D4DE424B8749E247AB091D3599F6239D3E135"
     },
     {
       "file": "windows/standalone/FreeNetHubShell.manifest",
@@ -3001,7 +3001,7 @@
     {
       "file": "windows/standalone/MANIFEST.json",
       "bytes": 2871,
-      "sha256": "DA8B6F70B1C25DAAC75F7CA68050A4FF33DB08117E7917BB1387CD282E2CB2B3"
+      "sha256": "9283752A5D06AB64D4A4A8D7B83D65510914DDBD8E5E1F0D742AC653E2B218EB"
     },
     {
       "file": "windows/standalone/README_FA.md",

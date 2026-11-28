@@ -36,9 +36,21 @@ public class ShellLaunchContractTest {
         var mi=typeof(Program).GetMethod("DiscoverPowerShell",BindingFlags.NonPublic|BindingFlags.Static);
         Yes(mi!=null,"PowerShell resolver present");
         string resolved=(string)mi.Invoke(null,null);
-        string pf=Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        Yes(Path.GetFullPath(resolved).StartsWith(Path.GetFullPath(Path.Combine(pf,"PowerShell"))+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),"PowerShell limited to Program Files");
-        Console.WriteLine("SHELL_CONTRACT_TEST_PASS "+passed+"/12 - policy only; no launched PowerShell or UI");
+        string pf=Native.GetMachineProgramFiles();
+        Yes(Directory.Exists(pf),"Windows Program Files known folder is present");
+        Yes(Path.GetFullPath(resolved).StartsWith(Path.GetFullPath(Path.Combine(pf,"PowerShell"))+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),"PowerShell limited to Windows known folder");
+        string oldPf=Environment.GetEnvironmentVariable("ProgramFiles");
+        string oldPath=Environment.GetEnvironmentVariable("PATH");
+        try {
+            Environment.SetEnvironmentVariable("ProgramFiles",Path.Combine(root,"attacker-ProgramFiles"));
+            Environment.SetEnvironmentVariable("PATH",Path.Combine(root,"attacker-PATH"));
+            string after=(string)mi.Invoke(null,null);
+            Yes(String.Equals(after,resolved,StringComparison.OrdinalIgnoreCase),"Process environment cannot redirect trusted PowerShell");
+        } finally {
+            Environment.SetEnvironmentVariable("ProgramFiles",oldPf);
+            Environment.SetEnvironmentVariable("PATH",oldPath);
+        }
+        Console.WriteLine("SHELL_CONTRACT_TEST_PASS "+passed+"/14 - policy only; no launched PowerShell or UI");
         return 0;
     }
 }
