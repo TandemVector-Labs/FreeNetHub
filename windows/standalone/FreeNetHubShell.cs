@@ -278,7 +278,13 @@ internal static class Program
                         "FreeNet Hub",MessageBoxButtons.OK,MessageBoxIcon.Error);
                     return;
                 }
-                string ps=DiscoverPowerShell();
+                string ps;
+                try { ps=DiscoverPowerShell(); }
+                catch(Exception ex) {
+                    MessageBox.Show("Trusted machine PowerShell 7 path unavailable:\n"+ex.Message,
+                        "FreeNet Hub",MessageBoxButtons.OK,MessageBoxIcon.Error);
+                    return;
+                }
                 if(!ValidateDependencies(script,ps)) return;
                 Application.Run(new ShellContext(script,ps,activation));
             }
@@ -303,9 +309,28 @@ internal static class Program
 
     // Do not select an executable from user-controlled PATH or arbitrary WindowsApps
     // entries. The approved installer checks the same protected installation roots.
+    // Resolve the machine-wide install root from administrator-controlled HKLM.
+    // The current process may override PATH / ProgramFiles; do not launch from it.
     static string DiscoverPowerShell()
     {
-        string pf=Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        string pf;
+        var view=Environment.Is64BitOperatingSystem
+            ? Microsoft.Win32.RegistryView.Registry64
+            : Microsoft.Win32.RegistryView.Registry32;
+        using(var hklm=Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine,view))
+        using(var cv=hklm.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion",false)) {
+            if(cv==null) throw new InvalidOperationException("Machine Program Files registry key missing.");
+            pf=cv.GetValue("ProgramFilesDir",null,
+                Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+        }
+        // Fail closed on missing, relative, UNC, expanded-environment or quote-bearing paths.
+        if(String.IsNullOrWhiteSpace(pf) || pf.Length<3
+            || !Char.IsLetter(pf[0]) || pf[1]!=':'
+            || (pf[2]!='\\' && pf[2]!='/')
+            || pf.IndexOf('"')>=0 || pf.IndexOf('%')>=0
+            || pf.IndexOf('\r')>=0 || pf.IndexOf('\n')>=0)
+            throw new InvalidOperationException("Machine Program Files path is invalid.");
+        pf=Path.GetFullPath(pf);
         string[] candidates=new string[] {
             Path.Combine(pf,"PowerShell","7","pwsh.exe"),
             Path.Combine(pf,"PowerShell","7-preview","pwsh.exe")
