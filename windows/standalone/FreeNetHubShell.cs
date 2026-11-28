@@ -32,6 +32,28 @@ internal static class Native
     [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern IntPtr SendMessage(IntPtr hWnd,int msg,IntPtr wParam,IntPtr lParam);
     [DllImport("shell32.dll", SetLastError=true)] public static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
 
+    [DllImport("shell32.dll", ExactSpelling=true)]
+    static extern int SHGetKnownFolderPath(ref Guid folderId,uint flags,IntPtr token,out IntPtr pszPath);
+
+    // Windows supports relocated Program Files roots. Resolve its fixed known folder
+    // through Shell32 instead of trusting mutable process environment or PATH.
+    internal static string GetMachineProgramFiles()
+    {
+        Guid folderId=new Guid("905e63b6-c1bf-494e-b29c-65b732d3d21a"); // FOLDERID_ProgramFiles
+        IntPtr ptr=IntPtr.Zero;
+        int hr=SHGetKnownFolderPath(ref folderId,0,IntPtr.Zero,out ptr);
+        try {
+            if(hr<0) Marshal.ThrowExceptionForHR(hr);
+            string path=Marshal.PtrToStringUni(ptr);
+            if(String.IsNullOrWhiteSpace(path))
+                throw new InvalidOperationException("Windows Program Files known folder unavailable.");
+            return path;
+        } finally {
+            if(ptr!=IntPtr.Zero) Marshal.FreeCoTaskMem(ptr);
+        }
+    }
+
+
     [StructLayout(LayoutKind.Sequential, Pack=4)] public struct PROPERTYKEY { public Guid fmtid; public uint pid; public PROPERTYKEY(Guid f,uint p){fmtid=f;pid=p;} }
     [StructLayout(LayoutKind.Explicit)] public struct PROPVARIANT { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public IntPtr pointerValue; }
     [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -309,20 +331,11 @@ internal static class Program
 
     // Do not select an executable from user-controlled PATH or arbitrary WindowsApps
     // entries. The approved installer checks the same protected installation roots.
-    // Resolve the machine-wide install root from administrator-controlled HKLM.
-    // The current process may override PATH / ProgramFiles; do not launch from it.
+    // Resolve the Windows fixed known folder, not a user-supplied environment variable.
+    // Fail closed when Windows cannot resolve its machine-wide Program Files path.
     static string DiscoverPowerShell()
     {
-        string pf;
-        var view=Environment.Is64BitOperatingSystem
-            ? Microsoft.Win32.RegistryView.Registry64
-            : Microsoft.Win32.RegistryView.Registry32;
-        using(var hklm=Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine,view))
-        using(var cv=hklm.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion",false)) {
-            if(cv==null) throw new InvalidOperationException("Machine Program Files registry key missing.");
-            pf=cv.GetValue("ProgramFilesDir",null,
-                Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
-        }
+        string pf=Native.GetMachineProgramFiles();
         // Fail closed on missing, relative, UNC, expanded-environment or quote-bearing paths.
         if(String.IsNullOrWhiteSpace(pf) || pf.Length<3
             || !Char.IsLetter(pf[0]) || pf[1]!=':'

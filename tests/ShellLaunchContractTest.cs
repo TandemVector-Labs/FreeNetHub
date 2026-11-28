@@ -36,12 +36,9 @@ public class ShellLaunchContractTest {
         var mi=typeof(Program).GetMethod("DiscoverPowerShell",BindingFlags.NonPublic|BindingFlags.Static);
         Yes(mi!=null,"PowerShell resolver present");
         string resolved=(string)mi.Invoke(null,null);
-        string pf;
-        var view=Environment.Is64BitOperatingSystem ? Microsoft.Win32.RegistryView.Registry64 : Microsoft.Win32.RegistryView.Registry32;
-        using(var hklm=Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine,view))
-        using(var cv=hklm.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion",false))
-            pf=cv.GetValue("ProgramFilesDir",null,Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
-        Yes(Path.GetFullPath(resolved).StartsWith(Path.GetFullPath(Path.Combine(pf,"PowerShell"))+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),"PowerShell limited to machine Program Files");
+        string pf=Native.GetMachineProgramFiles();
+        Yes(Directory.Exists(pf),"Windows Program Files known folder is present");
+        Yes(Path.GetFullPath(resolved).StartsWith(Path.GetFullPath(Path.Combine(pf,"PowerShell"))+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),"PowerShell limited to Windows known folder");
         string oldPf=Environment.GetEnvironmentVariable("ProgramFiles");
         string oldPath=Environment.GetEnvironmentVariable("PATH");
         try {
@@ -53,7 +50,7 @@ public class ShellLaunchContractTest {
             Environment.SetEnvironmentVariable("ProgramFiles",oldPf);
             Environment.SetEnvironmentVariable("PATH",oldPath);
         }
-        Console.WriteLine("SHELL_CONTRACT_TEST_PASS "+passed+"/13 - policy only; no launched PowerShell or UI");
+        Console.WriteLine("SHELL_CONTRACT_TEST_PASS "+passed+"/14 - policy only; no launched PowerShell or UI");
         return 0;
     }
 }
