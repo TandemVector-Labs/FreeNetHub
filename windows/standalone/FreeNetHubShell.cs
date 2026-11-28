@@ -32,6 +32,28 @@ internal static class Native
     [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern IntPtr SendMessage(IntPtr hWnd,int msg,IntPtr wParam,IntPtr lParam);
     [DllImport("shell32.dll", SetLastError=true)] public static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
 
+    [DllImport("shell32.dll", ExactSpelling=true)]
+    static extern int SHGetKnownFolderPath(ref Guid folderId,uint flags,IntPtr token,out IntPtr pszPath);
+
+    // Windows supports relocated Program Files roots. Resolve its fixed known folder
+    // through Shell32 instead of trusting mutable process environment or PATH.
+    internal static string GetMachineProgramFiles()
+    {
+        Guid folderId=new Guid("905e63b6-c1bf-494e-b29c-65b732d3d21a"); // FOLDERID_ProgramFiles
+        IntPtr ptr=IntPtr.Zero;
+        int hr=SHGetKnownFolderPath(ref folderId,0,IntPtr.Zero,out ptr);
+        try {
+            if(hr<0) Marshal.ThrowExceptionForHR(hr);
+            string path=Marshal.PtrToStringUni(ptr);
+            if(String.IsNullOrWhiteSpace(path))
+                throw new InvalidOperationException("Windows Program Files known folder unavailable.");
+            return path;
+        } finally {
+            if(ptr!=IntPtr.Zero) Marshal.FreeCoTaskMem(ptr);
+        }
+    }
+
+
     [StructLayout(LayoutKind.Sequential, Pack=4)] public struct PROPERTYKEY { public Guid fmtid; public uint pid; public PROPERTYKEY(Guid f,uint p){fmtid=f;pid=p;} }
     [StructLayout(LayoutKind.Explicit)] public struct PROPVARIANT { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public IntPtr pointerValue; }
     [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -271,31 +293,63 @@ internal static class Program
                 try { Native.SetCurrentProcessExplicitAppUserModelID("FreeNetHub.Desktop"); } catch { }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                string script=args.Length>0 ? args[0] : DiscoverScript();
-                string ps=DiscoverPowerShell();
+                string script;
+                try { script=ResolveTrustedEntry(args); }
+                catch(Exception ex) {
+                    MessageBox.Show("FreeNet Hub entry is not an approved installed script:\n"+ex.Message,
+                        "FreeNet Hub",MessageBoxButtons.OK,MessageBoxIcon.Error);
+                    return;
+                }
+                string ps;
+                try { ps=DiscoverPowerShell(); }
+                catch(Exception ex) {
+                    MessageBox.Show("Trusted machine PowerShell 7 path unavailable:\n"+ex.Message,
+                        "FreeNet Hub",MessageBoxButtons.OK,MessageBoxIcon.Error);
+                    return;
+                }
                 if(!ValidateDependencies(script,ps)) return;
                 Application.Run(new ShellContext(script,ps,activation));
             }
         }
     }
 
+    // The installed shell executes only its own known entry point. Caller-supplied
+    // arbitrary scripts must not be forwarded to PowerShell by the GUI launcher.
+    internal static string ResolveTrustedEntry(string[] args)
+    {
+        string expected=Path.GetFullPath(DiscoverScript());
+        if(!File.Exists(expected)) throw new FileNotFoundException("Installed entry script missing",expected);
+        if(args!=null && args.Length>0) {
+            if(args.Length!=1 || String.IsNullOrWhiteSpace(args[0]))
+                throw new ArgumentException("Expected a single installed-script path");
+            string supplied=Path.GetFullPath(args[0]);
+            if(!String.Equals(supplied,expected,StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException("Shell entry outside approved installed script");
+        }
+        return expected;
+    }
+
+    // Do not select an executable from user-controlled PATH or arbitrary WindowsApps
+    // entries. The approved installer checks the same protected installation roots.
+    // Resolve the Windows fixed known folder, not a user-supplied environment variable.
+    // Fail closed when Windows cannot resolve its machine-wide Program Files path.
     static string DiscoverPowerShell()
     {
+        string pf=Native.GetMachineProgramFiles();
+        // Fail closed on missing, relative, UNC, expanded-environment or quote-bearing paths.
+        if(String.IsNullOrWhiteSpace(pf) || pf.Length<3
+            || !Char.IsLetter(pf[0]) || pf[1]!=':'
+            || (pf[2]!='\\' && pf[2]!='/')
+            || pf.IndexOf('"')>=0 || pf.IndexOf('%')>=0
+            || pf.IndexOf('\r')>=0 || pf.IndexOf('\n')>=0)
+            throw new InvalidOperationException("Machine Program Files path is invalid.");
+        pf=Path.GetFullPath(pf);
         string[] candidates=new string[] {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"PowerShell","7","pwsh.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"PowerShell","7-preview","pwsh.exe")
+            Path.Combine(pf,"PowerShell","7","pwsh.exe"),
+            Path.Combine(pf,"PowerShell","7-preview","pwsh.exe")
         };
-        foreach(var p in candidates) if(File.Exists(p)) return p;
-        string path=Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach(var dir in path.Split(';')) { try { var p=Path.Combine(dir.Trim(),"pwsh.exe"); if(File.Exists(p)) return p; } catch{} }
-        try {
-            var wa=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"WindowsApps");
-            if(Directory.Exists(wa)) {
-                var dirs=Directory.GetDirectories(wa,"Microsoft.PowerShell_*");
-                Array.Sort(dirs,StringComparer.OrdinalIgnoreCase); Array.Reverse(dirs);
-                foreach(var d in dirs) { var p=Path.Combine(d,"pwsh.exe"); if(File.Exists(p)) return p; }
-            }
-        } catch { }
+        foreach(var candidate in candidates)
+            if(File.Exists(candidate)) return Path.GetFullPath(candidate);
         return candidates[0];
     }
 
